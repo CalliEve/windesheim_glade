@@ -1,6 +1,6 @@
 # Windesheim Glade Interpreter
 
-This is an interpreter for test running the sort-of pseudo-code used for the a-mazing challenge of the introduction week of year 2 HBO-ICT of University of Applied Sciences Windesheim. Included is example code in `instructions.txt` and an example glade in `glade.csv` to un it against.
+This is an interpreter for test running the sort-of pseudo-code used for the a-mazing challenge of the introduction week of year 2 HBO-ICT of University of Applied Sciences Windesheim. Included is example code in `instructions.txt` and an example glade in `glade.csv` to run it against.
 
 ## csv syntax
 
@@ -11,7 +11,7 @@ This is an interpreter for test running the sort-of pseudo-code used for the a-m
 | t      | target (doel)  | number of target                                |
 | m      | money (bonus)  | 2 ^ x is the bonus gained                       |
 | d      | turner (draai) | 1-3 times turning to the left, 0 is random turn |
-| s      | start          | 0-3 is direction, clock-wise with 0 is north    |
+| s      | start          | 0-3 is direction, clock-wise with 0 being north |
 | w      | white square   |
 | g      | gray square    |
 | r      | red square     |
@@ -29,6 +29,6 @@ Uses the syntax (including bugs) of "taal 20", a simple language made for the a-
 ## notes
 
 - compiling requires rust nightly
-- csv file has to be named `glade.csv`
-- code file needs to be named `instructions.txt`
+- csv file can be passed by using `-g <filepath>` and defaults to `glade.csv`
+- code file can be passed by using `-c <filepath>` and defaults to `instructions.txt`
 - needs to be ran from the command line in the directory with the csv and txt file

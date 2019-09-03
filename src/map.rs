@@ -47,7 +47,7 @@ impl Content {
                 i32::from_str_radix(&left, 10).expect("no value associated with the target") - 1,
             ),
             'm' => Self::Money(
-                2 ^ i32::from_str_radix(&left, 10).expect("no value associated with the money"),
+                i32::from_str_radix(&left, 10).expect("no value associated with the money"),
             ),
             'd' => Self::Turner(
                 i32::from_str_radix(&left, 10).expect("no value associated with the turner"),
@@ -111,6 +111,10 @@ pub struct Glade {
 
 impl Glade {
     pub fn parse(path: &str) -> Glade {
+        let mut targets: Vec<i32> = Vec::new();
+        let mut bonusses: Vec<i32> = Vec::new();
+        let mut griever = false;
+
         let mut csv_reader = ReaderBuilder::new()
             .has_headers(false)
             .delimiter(b';')
@@ -137,20 +141,47 @@ impl Glade {
                 let mut column = String::from(r_column);
                 let mut c = Content::parse(&mut column);
 
-                if let Content::Griever(s) = c {
-                    glade.griever = Griever {
-                        x: j,
-                        y: i,
-                        direction: Direction::parse(s),
-                    };
-                    c = Content::BlackSquare;
-                } else if let Content::Target(t) = c {
-                    if t > glade.last_target {
-                        glade.last_target = t
-                    }
+                match c {
+                    Content::Griever(s) => {
+                        if griever {
+                            panic!("there are multiple grievers in the glade, this is an error!")
+                        }
+
+                        glade.griever = Griever {
+                            x: j,
+                            y: i,
+                            direction: Direction::parse(s),
+                        };
+                        c = Content::BlackSquare;
+                        griever = true;
+                    },
+                    Content::Target(t) => {
+                        if targets.contains(&t) {
+                            panic!("a target with value {} exists multiple times", t)
+                        }
+
+                        targets.push(t);
+                        if t > glade.last_target {
+                            glade.last_target = t
+                        }
+                    },
+                    Content::Money(v) => {
+                        if bonusses.contains(&v) {
+                            panic!("a bonus with value {} exists multiple times", v)
+                        }
+                        bonusses.push(v)
+                    },
+                    _ => {},
                 }
 
                 m.insert(j, c);
+            }
+        }
+
+        targets.sort();
+        for (i, t) in targets.iter().enumerate() {
+            if i != *t as usize {
+                panic!("missing one or more targets (note that targets have to be a continuos sequence starting at 1 and to a max of 9)")
             }
         }
 
@@ -174,19 +205,21 @@ impl Glade {
 
     fn get_forward(&self) -> (usize, usize) {
         match self.griever.direction {
-            Direction::North => (self.griever.x, self.griever.y - 1),
-            Direction::East => (self.griever.x + 1, self.griever.y),
-            Direction::South => (self.griever.x, self.griever.y + 1),
-            Direction::West => (self.griever.x - 1, self.griever.y),
+            Direction::North if self.griever.y > 0 => (self.griever.x, self.griever.y - 1),
+            Direction::East if self.griever.x < 19 => (self.griever.x + 1, self.griever.y),
+            Direction::South if self.griever.y < 19 => (self.griever.x, self.griever.y + 1),
+            Direction::West if self.griever.x > 0 => (self.griever.x - 1, self.griever.y),
+            _ => panic!("attempted to move out of the map!"),
         }
     }
 
     fn get_backward(&self) -> (usize, usize) {
         match self.griever.direction {
-            Direction::North => (self.griever.x, self.griever.y + 1),
-            Direction::East => (self.griever.x - 1, self.griever.y),
-            Direction::South => (self.griever.x, self.griever.y - 1),
-            Direction::West => (self.griever.x + 1, self.griever.y),
+            Direction::North if self.griever.y < 19 => (self.griever.x, self.griever.y + 1),
+            Direction::East if self.griever.x > 0 => (self.griever.x - 1, self.griever.y),
+            Direction::South if self.griever.y > 0 => (self.griever.x, self.griever.y - 1),
+            Direction::West if self.griever.x < 19 => (self.griever.x + 1, self.griever.y),
+            _ => panic!("attempted to move out of the map!"),
         }
     }
 
@@ -202,7 +235,7 @@ impl Glade {
         match c {
             Content::Money(a) => {
                 self.set_pos(x, y, Content::Money(0));
-                return Ok(a);
+                return Ok(2_i32.pow(a as u32));
             },
             Content::Bomb(seconds, last) => {
                 if seconds == 0 || last + seconds == self.seconds {
@@ -232,11 +265,15 @@ impl Glade {
     pub fn forward(&mut self) -> Result<i32, ()> {
         self.s_inc();
         let f = self.get_forward();
-        self.griever.x = f.0;
-        self.griever.y = f.1;
         let p = self.get_pos(f.0, f.1);
 
-        self.handle_new_pos(f.0, f.1, p)
+        let res = self.handle_new_pos(f.0, f.1, p);
+        if res.is_ok() {
+            self.griever.x = f.0;
+            self.griever.y = f.1;
+        }
+
+        res
     }
 
     pub fn backward(&mut self) -> Result<i32, ()> {
@@ -246,7 +283,13 @@ impl Glade {
         self.griever.y = b.1;
         let p = self.get_pos(b.0, b.1);
 
-        self.handle_new_pos(b.0, b.1, p)
+        let res = self.handle_new_pos(b.0, b.1, p);
+        if res.is_ok() {
+            self.griever.x = b.0;
+            self.griever.y = b.1;
+        }
+
+        res
     }
 
     pub fn bw_eye(&mut self) -> i32 {
@@ -266,6 +309,7 @@ impl Glade {
     }
 
     pub fn turn_left(&mut self) {
+        self.s_inc();
         self.griever.direction = match self.griever.direction {
             Direction::North => Direction::West,
             Direction::East => Direction::North,
@@ -275,6 +319,7 @@ impl Glade {
     }
 
     pub fn turn_right(&mut self) {
+        self.s_inc();
         self.griever.direction = match self.griever.direction {
             Direction::North => Direction::East,
             Direction::East => Direction::South,
