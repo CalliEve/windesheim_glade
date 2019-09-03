@@ -1,4 +1,4 @@
-use super::{regex::*, weights::*};
+use super::{map::*, regex::*, weights::*};
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -6,9 +6,12 @@ use std::collections::HashMap;
 pub enum LangObject {
     Zolang(Zolang),
     Als(Als),
-    Action(Steps),
     Assignment(Assignment),
     Print(Print),
+    StepForwards,
+    StepBackwards,
+    TurnLeft,
+    TurnRight,
 }
 
 #[derive(Clone, Debug)]
@@ -27,10 +30,16 @@ impl ExpressionVar {
             ExpressionVar::Int(i)
         } else if text.trim().chars().count() == 1 {
             ExpressionVar::Variable(text.trim().to_owned())
+        } else if text.trim() == "kompas" && ctx.useable.contains(&Hardware::Kompas) {
+            ExpressionVar::Kompas
+        } else if text.trim() == "zwOog" && ctx.useable.contains(&Hardware::ZwOog) {
+            ExpressionVar::ZwOog
+        } else if text.trim() == "kleurOog" && ctx.useable.contains(&Hardware::KleurOog) {
+            ExpressionVar::KleurOog
         } else if INT_EXPRESSION.is_match(&text) {
             ExpressionVar::Expression(Box::new(IntExpression::parse(text, line, ctx)))
         } else {
-            panic!("invalid expression to assign on line {}", line)
+            panic!("invalid expression on line {}", line)
         }
     }
 }
@@ -52,15 +61,7 @@ pub enum Operator {
     Remainder,
 }
 
-#[derive(Clone, Debug)]
-pub enum Steps {
-    StepForwards,
-    StepBackwards,
-    TurnLeft,
-    TurnRight,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Hardware {
     Kompas,
     ZwOog,
@@ -74,11 +75,12 @@ pub struct Context {
     pub points: i32,
     pub variables: HashMap<String, Option<i32>>,
     pub useable: Vec<Hardware>,
+    pub glade: Glade,
 }
 
 impl Context {
-    pub fn new(file_text: String) -> Context {
-        let mut ctx = Context {
+    pub fn new(file_text: String, glade: Glade) -> Context {
+        Context {
             file_text: file_text.clone(),
             code: CodeBlock {
                 text: file_text.clone(),
@@ -88,17 +90,20 @@ impl Context {
             points: 0,
             variables: HashMap::new(),
             useable: Vec::new(),
-        };
+            glade,
+        }
+    }
 
-        ctx.parse_variables();
-        ctx.code = CodeBlock::parse(file_text, 0, &mut ctx);
-        ctx
+    pub fn parse(&mut self) {
+        self.parse_variables();
+        self.code = CodeBlock::parse(self.file_text.clone(), 0, self);
     }
 
     fn parse_variables(&mut self) {
-        let lines: Vec<&str> = Regex::new("\n").unwrap().split(&self.file_text).collect();
+        let text = self.file_text.clone();
+        let lines: Vec<&str> = Regex::new("\n").unwrap().split(&text).collect();
 
-        for (i, line) in lines.iter().enumerate() {
+        for line in lines.iter() {
             if INSTANTIATOR.is_match(line) {
                 let c = INSTANTIATOR.captures(line).unwrap();
                 let name = c.get(1).unwrap().as_str().to_owned();
@@ -106,24 +111,24 @@ impl Context {
                 match name.as_ref() {
                     "kompas" => {
                         self.useable.push(Hardware::Kompas);
-                        self.points += KOMPAS_HARDWARE;
+                        self.add_points(KOMPAS_HARDWARE);
                         continue;
                     },
                     "zwOog" => {
                         self.useable.push(Hardware::ZwOog);
-                        self.points += ZWOOG_HARDWARE;
+                        self.add_points(ZWOOG_HARDWARE);
                         continue;
                     },
                     "kleurOog" => {
                         self.useable.push(Hardware::KleurOog);
-                        self.points += KLEUROOG_HARDWARE;
+                        self.add_points(KLEUROOG_HARDWARE);
                         continue;
                     },
                     _ => {},
                 }
 
                 self.variables.insert(name, None);
-                self.points += VAR_HARDWARE;
+                self.add_points(VAR_HARDWARE);
             }
         }
     }
@@ -141,6 +146,13 @@ impl Context {
             }
         }
         panic!("no variable named {} defined", name)
+    }
+
+    pub fn add_points(&mut self, p: i32) {
+        self.points += p;
+        if self.points > 2020 {
+            panic!("Used up too much of your money!")
+        }
     }
 }
 
@@ -163,6 +175,18 @@ impl CodeBlock {
                     in_block = false
                 }
                 continue;
+            } else if line.trim() == "draaiLinks" {
+                ctx.add_points(ACTION_SOFTWARE);
+                objects.push(LangObject::TurnLeft)
+            } else if line.trim() == "draaiRechts" {
+                ctx.add_points(ACTION_SOFTWARE);
+                objects.push(LangObject::TurnRight)
+            } else if line.trim() == "stapVooruit" {
+                ctx.add_points(ACTION_SOFTWARE);
+                objects.push(LangObject::StepForwards)
+            } else if line.trim() == "stapAchteruit" {
+                ctx.add_points(ACTION_SOFTWARE);
+                objects.push(LangObject::StepBackwards)
             } else if ASSIGNMENT.is_match(line) {
                 objects.push(Assignment::parse(String::from(*line), line_nr + i + 1, ctx))
             } else if PRINT.is_match(line) {
@@ -202,6 +226,14 @@ impl CodeBlock {
                 LangObject::Assignment(v) => v.calc(ctx),
                 LangObject::Als(v) => v.run_if(ctx),
                 LangObject::Print(v) => v.print(ctx),
+                LangObject::TurnLeft => {
+                    ctx.glade.turn_left();
+                    ctx.add_points(TURNLEFT_USAGE);
+                },
+                LangObject::TurnRight => {
+                    ctx.glade.turn_right();
+                    ctx.add_points(TURNRIGHT_USAGE);
+                },
                 _ => panic!(
                     "found a non-valid statement in the code block starting at {}",
                     self.line
@@ -241,26 +273,42 @@ impl BoolExpression {
         }
     }
 
-    pub fn calc(&self, ctx: &Context) -> bool {
-        println!("checking");
+    pub fn calc(&self, ctx: &mut Context) -> bool {
+        ctx.add_points(COMPARISON_USAGE);
         let left = match &self.left {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Int(var) => *var,
             ExpressionVar::Expression(deeper) => deeper.calc(ctx),
-            _ => panic!(
-                "these values are not currently supported for an bool expression, expression at line: {}",
-                self.line
-            ), // TODO: add the special vars
+            ExpressionVar::Kompas => {
+                ctx.add_points(KOMPAS_USAGE);
+                ctx.glade.griever.kompas()
+            },
+            ExpressionVar::KleurOog => {
+                ctx.add_points(KLEUROOG_USAGE);
+                ctx.glade.color_eye()
+            },
+            ExpressionVar::ZwOog => {
+                ctx.add_points(ZWOOG_USAGE);
+                ctx.glade.bw_eye()
+            },
         };
 
         let right = match &self.right {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Int(var) => *var,
             ExpressionVar::Expression(deeper) => deeper.calc(ctx),
-            _ => panic!(
-                "these values are not currently supported for an bool expression, expression at line: {}",
-                self.line
-            ), // TODO: add the special vars
+            ExpressionVar::Kompas => {
+                ctx.add_points(KOMPAS_USAGE);
+                ctx.glade.griever.kompas()
+            },
+            ExpressionVar::KleurOog => {
+                ctx.add_points(KLEUROOG_USAGE);
+                ctx.glade.color_eye()
+            },
+            ExpressionVar::ZwOog => {
+                ctx.add_points(ZWOOG_USAGE);
+                ctx.glade.bw_eye()
+            },
         };
 
         // println!("left: {}, op: {:?}, right: {}", left, &self.comparer, right);
@@ -310,25 +358,42 @@ impl IntExpression {
         }
     }
 
-    pub fn calc(&self, ctx: &Context) -> i32 {
+    pub fn calc(&self, ctx: &mut Context) -> i32 {
+        ctx.add_points(OPERATION_USAGE);
         let left = match &self.left {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Int(var) => *var,
             ExpressionVar::Expression(deeper) => deeper.calc(ctx),
-            _ => panic!(
-                "these values are not currently supported for an int expression, expression at line: {}",
-                self.line
-            ), // TODO: add the special vars
+            ExpressionVar::Kompas => {
+                ctx.add_points(KOMPAS_USAGE);
+                ctx.glade.griever.kompas()
+            },
+            ExpressionVar::KleurOog => {
+                ctx.add_points(KLEUROOG_USAGE);
+                ctx.glade.color_eye()
+            },
+            ExpressionVar::ZwOog => {
+                ctx.add_points(ZWOOG_USAGE);
+                ctx.glade.bw_eye()
+            },
         };
 
         let right = match &self.right {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Int(var) => *var,
             ExpressionVar::Expression(deeper) => deeper.calc(ctx),
-            _ => panic!(
-                "these values are not currently supported for an int expression, expression at line: {}",
-                self.line
-            ), // TODO: add the special vars
+            ExpressionVar::Kompas => {
+                ctx.add_points(KOMPAS_USAGE);
+                ctx.glade.griever.kompas()
+            },
+            ExpressionVar::KleurOog => {
+                ctx.add_points(KLEUROOG_USAGE);
+                ctx.glade.color_eye()
+            },
+            ExpressionVar::ZwOog => {
+                ctx.add_points(ZWOOG_USAGE);
+                ctx.glade.bw_eye()
+            },
         };
 
         // println!("left: {}, op: {:?}, right: {}", left, &self.operator, right);
@@ -352,7 +417,7 @@ pub struct Zolang {
 
 impl Zolang {
     pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
-        ctx.points += ZOLANG_SOFTWARE;
+        ctx.add_points(ZOLANG_SOFTWARE);
         let c = ZOLANG.captures(&text).unwrap();
         let expr_str = c.get(1).unwrap().as_str().to_owned();
         let codeblock_str = c.get(2).unwrap().as_str().to_owned();
@@ -381,7 +446,7 @@ pub struct Als {
 
 impl Als {
     pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
-        ctx.points += ALS_SOFTWARE;
+        ctx.add_points(ALS_SOFTWARE);
         let c = ALS.captures(&text).unwrap();
         let expr_str = c.get(1).unwrap().as_str().to_owned();
         let if_codeblock_str = c.get(2).unwrap().as_str().to_owned();
@@ -419,7 +484,7 @@ pub struct Assignment {
 
 impl Assignment {
     pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
-        ctx.points += ASSIGNMENT_SOFTWARE;
+        ctx.add_points(ASSIGNMENT_SOFTWARE);
         let c = ASSIGNMENT.captures(&text).unwrap();
         let name = c.get(1).unwrap().as_str();
         let to_assign = c.get(2).unwrap().as_str().to_owned();
@@ -434,10 +499,15 @@ impl Assignment {
     }
 
     pub fn calc(&self, ctx: &mut Context) {
+        ctx.add_points(ASSIGNMENT_USAGE);
         let value = match &self.expression {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Expression(exp) => exp.calc(ctx),
             ExpressionVar::Int(i) => *i,
+            ExpressionVar::Kompas => {
+                ctx.add_points(KOMPAS_USAGE);
+                ctx.glade.griever.kompas()
+            },
             _ => panic!(
                 "these values are not currently supported for an assignment, assignment at line: {}",
                 self.line
@@ -480,10 +550,9 @@ impl Print {
             ExpressionVar::Variable(inner_var) => ctx.get_var(&inner_var),
             ExpressionVar::Expression(exp) => exp.calc(ctx),
             ExpressionVar::Int(i) => *i,
-            _ => panic!(
-                "these values are not currently supported for an assignment, assignment at line: {}",
-                self.line
-            ),
+            ExpressionVar::Kompas => ctx.glade.griever.kompas(),
+            ExpressionVar::KleurOog => ctx.glade.color_eye(),
+            ExpressionVar::ZwOog => ctx.glade.bw_eye(),
         };
 
         println!("at line {} print: {}", self.line, value)

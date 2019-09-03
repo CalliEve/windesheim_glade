@@ -17,3 +17,13 @@ pub const ZOLANG_SOFTWARE: i32 = 4;
 pub const ALS_SOFTWARE: i32 = 4;
 pub const ACTION_SOFTWARE: i32 = 2;
 pub const ASSIGNMENT_SOFTWARE: i32 = 2;
+
+pub const WHITE_SQUARE: i32 = 8;
+pub const GRAY_SQUARE: i32 = 7;
+pub const RED_SQUARE: i32 = 6;
+pub const ORANGE_SQUARE: i32 = 5;
+pub const YELLOW_SQUARE: i32 = 4;
+pub const GREEN_SQUARE: i32 = 3;
+pub const BLUE_SQUARE: i32 = 2;
+pub const PURPLE_SQUARE: i32 = 1;
+pub const BLACK_SQUARE: i32 = 0;

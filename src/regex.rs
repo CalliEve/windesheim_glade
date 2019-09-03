@@ -3,13 +3,14 @@ use regex::Regex;
 
 lazy_static! {
     pub static ref INSTANTIATOR: Regex =
-        Regex::new(r"[ \t]*gebruik ([a-z]|kleurOog|zwOog|kompas) *").unwrap();
-    pub static ref PRINT: Regex = Regex::new(r"[ \t]*print ([a-z]) *").unwrap();
+        Regex::new(r"[ \t]*gebruik (kleurOog|zwOog|kompas|[a-z]) *").unwrap();
+    pub static ref PRINT: Regex =
+        Regex::new(r"[ \t]*print ([0-9]+|kompas|zwOog|kleurOog|[a-z]) *").unwrap();
     pub static ref LONE_VAR: Regex = Regex::new(r"[ \t]+([a-z])[ \n$]").unwrap();
     pub static ref INT_EXPRESSION: Regex =
-        Regex::new(r"[ \t]*(.*) (\+|-|\*|/|%) ([0-9]+|[a-z])").unwrap();
+        Regex::new(r"[ \t]*(.*) (\+|-|\*|/|%) ([0-9]+|kompas|zwOog|kleurOog|[a-z])").unwrap();
     pub static ref BOOL_EXPRESSION: Regex =
-        Regex::new(r"[ \t]*([0-9]+|[a-z]) (==|!=|>|<) (.*)").unwrap();
+        Regex::new(r"[ \t]*([0-9]+|kompas|zwOog|kleurOog|[a-z]) (==|!=|>|<) (.*)").unwrap();
     pub static ref ASSIGNMENT: Regex = Regex::new(r"[ \t]*([a-z]) = (.*)").unwrap();
     pub static ref ZOLANG: Regex = Regex::new(r"(?s)[ \t]*zolang (.*?) \{ *\n?(.*?)\n?\}").unwrap();
     pub static ref ALS: Regex =

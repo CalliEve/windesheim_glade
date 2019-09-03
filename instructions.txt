@@ -1,10 +1,13 @@
 gebruik a
 gebruik b
+gebruik kompas
+gebruik zwOog
+gebruik kleurOog
 
 a = 0
 b = 0
 
-b = 1
+draaiLinks
 
 als b > 10 {
     b = 2
@@ -12,5 +15,12 @@ als b > 10 {
     b = 4
 }
 
+zolang a < 10 {
+    a = a + 1
+}
+
 print a
 print b
+print kompas
+print zwOog
+print kleurOog
