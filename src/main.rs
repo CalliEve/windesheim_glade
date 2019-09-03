@@ -19,5 +19,6 @@ fn main() {
     ctx.parse();
     ctx.execute();
 
+    println!("FAILED");
     println!("points left: {}", 2020 - ctx.points);
 }

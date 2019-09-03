@@ -1,26 +1,22 @@
 gebruik a
-gebruik b
-gebruik kompas
 gebruik zwOog
 gebruik kleurOog
 
-a = 0
-b = 0
+stapVooruit
+stapVooruit
+
+zolang zwOog == 1 {
+    stapVooruit
+}
+
+print kleurOog
 
 draaiLinks
 
-als b > 10 {
-    b = 2
-} anders {
-    b = 4
-}
+a = 0
 
-zolang a < 10 {
+zolang a < 4 {
+    print a
     a = a + 1
+    stapVooruit
 }
-
-print a
-print b
-print kompas
-print zwOog
-print kleurOog

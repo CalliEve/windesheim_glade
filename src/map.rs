@@ -1,11 +1,12 @@
 use super::weights::*;
 use csv::ReaderBuilder;
+use rand::seq::IteratorRandom;
 use std::{collections::HashMap, iter::FromIterator};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Content {
     Obstacle,
-    Bomb,
+    Bomb(i32, i32),
     WhiteSquare,
     GraySquare,
     RedSquare,
@@ -16,7 +17,7 @@ pub enum Content {
     PurpleSquare,
     BlackSquare,
     Griever(i32),
-    Money(i32, bool),
+    Money(i32),
     Turner(i32),
     Target(i32),
 }
@@ -29,7 +30,10 @@ impl Content {
         let left = String::from_iter(chars.take_while(|c| c.is_numeric()));
         match i {
             'q' => Self::Obstacle,
-            'x' => Self::Bomb,
+            'x' => Self::Bomb(
+                i32::from_str_radix(&left, 10).expect("no value associated with the bomb"),
+                0,
+            ),
             'w' => Self::WhiteSquare,
             'g' => Self::GraySquare,
             'r' => Self::RedSquare,
@@ -40,11 +44,10 @@ impl Content {
             'p' => Self::PurpleSquare,
             'l' => Self::BlackSquare,
             't' => Self::Target(
-                i32::from_str_radix(&left, 10).expect("no value associated with the target"),
+                i32::from_str_radix(&left, 10).expect("no value associated with the target") - 1,
             ),
             'm' => Self::Money(
                 2 ^ i32::from_str_radix(&left, 10).expect("no value associated with the money"),
-                false,
             ),
             'd' => Self::Turner(
                 i32::from_str_radix(&left, 10).expect("no value associated with the turner"),
@@ -67,9 +70,9 @@ impl Content {
             Self::RedSquare => RED_SQUARE,
             Self::WhiteSquare => WHITE_SQUARE,
             Self::YellowSquare => YELLOW_SQUARE,
-            Self::Bomb => BLACK_SQUARE,
+            Self::Bomb(_, _) => BLACK_SQUARE,
             Self::Griever(_) => BLACK_SQUARE,
-            Self::Money(_, _) => YELLOW_SQUARE,
+            Self::Money(_) => YELLOW_SQUARE,
             Self::Obstacle => BLACK_SQUARE,
             Self::Turner(_) => BLUE_SQUARE,
             Self::Target(_) => YELLOW_SQUARE,
@@ -101,6 +104,9 @@ impl Direction {
 pub struct Glade {
     pub map: HashMap<usize, HashMap<usize, Content>>,
     pub griever: Griever,
+    seconds: i32,
+    target_count: i32,
+    last_target: i32,
 }
 
 impl Glade {
@@ -117,6 +123,9 @@ impl Glade {
                 y: 1,
                 direction: Direction::North,
             },
+            seconds: 0,
+            target_count: -1,
+            last_target: 0,
         };
 
         for (i, r_row) in csv_reader.records().enumerate() {
@@ -127,6 +136,7 @@ impl Glade {
                 let m = glade.map.get_mut(&i).unwrap();
                 let mut column = String::from(r_column);
                 let mut c = Content::parse(&mut column);
+
                 if let Content::Griever(s) = c {
                     glade.griever = Griever {
                         x: j,
@@ -134,6 +144,10 @@ impl Glade {
                         direction: Direction::parse(s),
                     };
                     c = Content::BlackSquare;
+                } else if let Content::Target(t) = c {
+                    if t > glade.last_target {
+                        glade.last_target = t
+                    }
                 }
 
                 m.insert(j, c);
@@ -143,22 +157,99 @@ impl Glade {
         glade
     }
 
-    fn get_forward(&self) -> (usize, usize) {
-        match self.griever.direction {
-            Direction::North => (self.griever.x, self.griever.y - 1),
-            Direction::East => (self.griever.x, self.griever.y - 1),
-            Direction::South => (self.griever.x, self.griever.y - 1),
-            Direction::West => (self.griever.x, self.griever.y - 1),
+    fn s_inc(&mut self) {
+        self.seconds += 1;
+    }
+
+    fn target_inc(&mut self, n: i32) {
+        println!("passed target {}", n + 1);
+        if n - 1 == self.target_count {
+            self.target_count += 1
         }
     }
 
-    fn get_pos(&self, x: usize, y: usize) -> &Content {
-        self.map.get(&y).unwrap().get(&x).unwrap()
+    pub fn success(&self) -> bool {
+        self.target_count != -1 && self.target_count == self.last_target
     }
 
-    pub fn forward(&mut self) {}
+    fn get_forward(&self) -> (usize, usize) {
+        match self.griever.direction {
+            Direction::North => (self.griever.x, self.griever.y - 1),
+            Direction::East => (self.griever.x + 1, self.griever.y),
+            Direction::South => (self.griever.x, self.griever.y + 1),
+            Direction::West => (self.griever.x - 1, self.griever.y),
+        }
+    }
 
-    pub fn bw_eye(&self) -> i32 {
+    fn get_backward(&self) -> (usize, usize) {
+        match self.griever.direction {
+            Direction::North => (self.griever.x, self.griever.y + 1),
+            Direction::East => (self.griever.x - 1, self.griever.y),
+            Direction::South => (self.griever.x, self.griever.y - 1),
+            Direction::West => (self.griever.x + 1, self.griever.y),
+        }
+    }
+
+    fn get_pos(&mut self, x: usize, y: usize) -> Content {
+        self.map.get(&y).unwrap().get(&x).unwrap().clone()
+    }
+
+    fn set_pos(&mut self, x: usize, y: usize, content: Content) {
+        self.map.get_mut(&y).unwrap().insert(x, content);
+    }
+
+    fn handle_new_pos(&mut self, x: usize, y: usize, c: Content) -> Result<i32, ()> {
+        match c {
+            Content::Money(a) => {
+                self.set_pos(x, y, Content::Money(0));
+                return Ok(a);
+            },
+            Content::Bomb(seconds, last) => {
+                if seconds == 0 || last + seconds == self.seconds {
+                    panic!("\n------------\n\nBOOM!\nYou're dead\n\n------------\n")
+                } else if last == 0 {
+                    self.set_pos(x, y, Content::Bomb(seconds, self.seconds));
+                }
+            },
+            Content::Target(times) => self.target_inc(times),
+            Content::Obstacle => return Err(()),
+            Content::Turner(mut times) => {
+                if times == 0 {
+                    let mut rng = rand::thread_rng();
+                    times = (0..4).choose(&mut rng).unwrap();
+                }
+                let mut i = 0;
+                while i < times {
+                    i += 1;
+                    self.turn_right()
+                }
+            },
+            _ => {},
+        }
+        Ok(0)
+    }
+
+    pub fn forward(&mut self) -> Result<i32, ()> {
+        self.s_inc();
+        let f = self.get_forward();
+        self.griever.x = f.0;
+        self.griever.y = f.1;
+        let p = self.get_pos(f.0, f.1);
+
+        self.handle_new_pos(f.0, f.1, p)
+    }
+
+    pub fn backward(&mut self) -> Result<i32, ()> {
+        self.s_inc();
+        let b = self.get_backward();
+        self.griever.x = b.0;
+        self.griever.y = b.1;
+        let p = self.get_pos(b.0, b.1);
+
+        self.handle_new_pos(b.0, b.1, p)
+    }
+
+    pub fn bw_eye(&mut self) -> i32 {
         let f = self.get_forward();
         let p = self.get_pos(f.0, f.1);
         match p.get_color_value() {
@@ -168,7 +259,7 @@ impl Glade {
         }
     }
 
-    pub fn color_eye(&self) -> i32 {
+    pub fn color_eye(&mut self) -> i32 {
         let f = self.get_forward();
         let p = self.get_pos(f.0, f.1);
         p.get_color_value()

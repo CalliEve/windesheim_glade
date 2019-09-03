@@ -195,20 +195,28 @@ impl CodeBlock {
                 continue;
             } else if ZOLANG_ID.is_match(line) {
                 let mut full: String = String::new();
-                lines.iter().for_each(|x| {
-                    full.push_str(*x);
-                    full.push_str("\n");
+                lines.iter().enumerate().for_each(|(k, x)| {
+                    if k >= i {
+                        full.push_str(*x);
+                        full.push_str("\n");
+                    }
                 });
                 objects.push(Zolang::parse(full, line_nr + i + 1, ctx));
                 in_block = true;
             } else if ALS_ID.is_match(line) {
                 let mut full: String = String::new();
-                lines.iter().for_each(|x| {
-                    full.push_str(*x);
-                    full.push_str("\n");
+                lines.iter().enumerate().for_each(|(k, x)| {
+                    if k >= i {
+                        full.push_str(*x);
+                        full.push_str("\n");
+                    }
                 });
                 objects.push(Als::parse(full, line_nr + i + 1, ctx));
                 in_block = true;
+            } else if INSTANTIATOR.is_match(line) {
+                continue;
+            } else {
+                panic!("\ninvalid text on line {}: {}\n", line_nr + i + 1, line)
             }
         }
 
@@ -234,10 +242,26 @@ impl CodeBlock {
                     ctx.glade.turn_right();
                     ctx.add_points(TURNRIGHT_USAGE);
                 },
-                _ => panic!(
-                    "found a non-valid statement in the code block starting at {}",
-                    self.line
-                ),
+                LangObject::StepForwards => {
+                    match ctx.glade.forward() {
+                        Result::Ok(a) => ctx.points -= a,
+                        Result::Err(_) => ctx.add_points(PUSH_OBSTACLE),
+                    };
+                    if ctx.glade.success() {
+                        println!("\nSUCCESS!\ncosts: {}", 2020 - ctx.points);
+                        std::process::exit(0)
+                    };
+                },
+                LangObject::StepBackwards => {
+                    match ctx.glade.forward() {
+                        Result::Ok(a) => ctx.points -= a,
+                        Result::Err(_) => ctx.add_points(PUSH_OBSTACLE),
+                    };
+                    if ctx.glade.success() {
+                        println!("\nSUCCESS!\ncosts: {}", 2020 - ctx.points);
+                        std::process::exit(0)
+                    };
+                },
             }
         }
     }
