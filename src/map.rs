@@ -77,7 +77,7 @@ impl Content {
 }
 
 #[derive(Clone, Debug)]
-enum Direction {
+pub enum Direction {
     North = 0,
     East = 1,
     South = 2,
@@ -231,17 +231,29 @@ impl Glade {
     }
 
     fn handle_new_pos(&mut self, x: usize, y: usize, c: &Content) -> Result<i32, ()> {
+        // println!(
+        //     "handling new position of {}, {}, direction: {:?}, content: {:?}",
+        //     x, y, self.griever.direction, c
+        // );
         match c {
             Content::Money(a) => {
                 self.set_pos(x, y, Content::Money(0));
                 let amount: u32 = (*a).try_into().unwrap_or_else(|_| {
-                    panic!("the bonus amount is not a positive number at {}, {}", x, y)
+                    panic!(
+                        "the bonus amount is not a positive number at {}, {}",
+                        x + 1,
+                        y + 1
+                    )
                 });
                 return Ok(2_i32.pow(amount));
             },
             Content::Bomb(seconds, last) => {
                 if *seconds == 0 || last + seconds == self.seconds {
-                    panic!("\n------------\n\nBOOM!\nYou're dead\n\n------------\n")
+                    panic!(
+                        "\n------------\n\nBOOM!\nYou're dead at {}, {}\n\n------------\n",
+                        x + 1,
+                        y + 1
+                    )
                 } else if *last == 0 {
                     self.set_pos(x, y, Content::Bomb(*seconds, self.seconds));
                 }
@@ -258,7 +270,7 @@ impl Glade {
                 let mut i = 0;
                 while i < times {
                     i += 1;
-                    self.turn_right()
+                    self.turn_right(true)
                 }
             },
             _ => {},
@@ -283,8 +295,6 @@ impl Glade {
     pub fn backward(&mut self) -> Result<i32, ()> {
         self.s_inc();
         let b = self.get_backward();
-        self.griever.x = b.0;
-        self.griever.y = b.1;
         let p = self.get_pos(b.0, b.1);
 
         let res = self.handle_new_pos(b.0, b.1, &p);
@@ -297,8 +307,7 @@ impl Glade {
     }
 
     pub fn bw_eye(&mut self) -> i32 {
-        let f = self.get_forward();
-        let p = self.get_pos(f.0, f.1);
+        let p = self.get_pos(self.griever.x, self.griever.y);
         match p.get_color_value() {
             1..9 => 1,
             0 => 0,
@@ -307,28 +316,39 @@ impl Glade {
     }
 
     pub fn color_eye(&mut self) -> i32 {
-        let f = self.get_forward();
-        let p = self.get_pos(f.0, f.1);
+        let p = self.get_pos(self.griever.x, self.griever.y);
         p.get_color_value()
     }
 
-    pub fn turn_left(&mut self) {
+    pub fn turn_left(&mut self, auto: bool) {
+        // println!("turn to the left");
         self.s_inc();
         self.griever.direction = match self.griever.direction {
             Direction::North => Direction::West,
             Direction::East => Direction::North,
             Direction::South => Direction::East,
             Direction::West => Direction::South,
+        };
+        if !auto {
+            let c = self.get_pos(self.griever.x, self.griever.y);
+            self.handle_new_pos(self.griever.x, self.griever.y, &c)
+                .unwrap();
         }
     }
 
-    pub fn turn_right(&mut self) {
+    pub fn turn_right(&mut self, auto: bool) {
+        // println!("turn to the right");
         self.s_inc();
         self.griever.direction = match self.griever.direction {
             Direction::North => Direction::East,
             Direction::East => Direction::South,
             Direction::South => Direction::West,
             Direction::West => Direction::North,
+        };
+        if !auto {
+            let c = self.get_pos(self.griever.x, self.griever.y);
+            self.handle_new_pos(self.griever.x, self.griever.y, &c)
+                .unwrap();
         }
     }
 }
@@ -337,7 +357,7 @@ impl Glade {
 pub struct Griever {
     pub x: usize,
     pub y: usize,
-    direction: Direction,
+    pub direction: Direction,
 }
 
 impl Griever {
