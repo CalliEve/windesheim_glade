@@ -152,8 +152,12 @@ impl Context {
 
     pub fn add_points(&mut self, p: i32) {
         self.points += p;
+        // println!("points: {}", self.points);
         if self.points > 2020 {
-            panic!("Used up too much of your money!")
+            panic!(
+                "Used up too much of your money! your total expenses are: {}",
+                self.points
+            )
         }
     }
 }
@@ -255,9 +259,16 @@ impl CodeBlock {
                     ctx.add_points(TURNRIGHT_USAGE);
                 },
                 LangObject::StepForwards => {
+                    // println!("step forward");
                     match ctx.glade.forward() {
                         Result::Ok(a) => ctx.points -= a,
-                        Result::Err(_) => ctx.add_points(PUSH_OBSTACLE),
+                        Result::Err(_) => {
+                            println!(
+                                "WARNING: collided against obstacle! location: {}, {}, direction: {:?}",
+                                ctx.glade.griever.x + 1, ctx.glade.griever.y + 1, ctx.glade.griever.direction
+                            );
+                            ctx.add_points(PUSH_OBSTACLE)
+                        },
                     };
                     if ctx.glade.success() {
                         println!("\nSUCCESS!\ncosts: {}", 2020 - ctx.points);
@@ -265,9 +276,16 @@ impl CodeBlock {
                     };
                 },
                 LangObject::StepBackwards => {
-                    match ctx.glade.forward() {
+                    // println!("step backwards");
+                    match ctx.glade.backward() {
                         Result::Ok(a) => ctx.points -= a,
-                        Result::Err(_) => ctx.add_points(PUSH_OBSTACLE),
+                        Result::Err(_) => {
+                            println!(
+                                "WARNING: collided against obstacle! location: {}, {}, direction: {:?}",
+                                ctx.glade.griever.x + 1, ctx.glade.griever.y + 1, ctx.glade.griever.direction
+                            );
+                            ctx.add_points(PUSH_OBSTACLE)
+                        },
                     };
                     if ctx.glade.success() {
                         println!("\nSUCCESS!\ncosts: {}", 2020 - ctx.points);
