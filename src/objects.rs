@@ -173,14 +173,16 @@ impl CodeBlock {
     pub fn parse(text: String, line_nr: usize, ctx: &mut Context) -> Self {
         let lines: Vec<&str> = text.split('\n').collect();
         let mut objects: Vec<LangObject> = Vec::new();
-        let mut in_block = false;
+        let mut open_brackets = 0;
 
         for (i, line) in lines.iter().enumerate() {
-            if in_block {
-                if END_BLOCK.is_match(line) {
-                    in_block = false
+            if open_brackets > 0 {
+                if line.contains('}') {
+                    open_brackets -= 1;
                 }
-                continue;
+                if line.contains('{') {
+                    open_brackets += 1;
+                }
             } else if FORBIDDEN_END_BLOCK.is_match(&line) {
                 panic!(
                     "a closing }} has to be on a newline! it isn't at line {}",
@@ -217,8 +219,8 @@ impl CodeBlock {
                         full.push_str("\n");
                     }
                 });
+                open_brackets += 1;
                 objects.push(Zolang::parse(&full, line_nr + i + 1, ctx));
-                in_block = true;
             } else if ALS_ID.is_match(line) {
                 let mut full: String = String::new();
                 lines.iter().enumerate().for_each(|(k, x)| {
@@ -227,8 +229,8 @@ impl CodeBlock {
                         full.push_str("\n");
                     }
                 });
+                open_brackets += 1;
                 objects.push(Als::parse(&full, line_nr + i + 1, ctx));
-                in_block = true;
             } else if INSTANTIATOR.is_match(line) {
                 continue;
             } else {
@@ -474,13 +476,34 @@ pub struct Zolang {
 impl Zolang {
     pub fn parse(text: &str, line: usize, ctx: &mut Context) -> LangObject {
         ctx.add_points(ZOLANG_SOFTWARE);
-        let c = ZOLANG.captures(&text).expect("found a zolang without a closing bracket, do note that these have to be on a new line.");
+        let c = ZOLANG_ID.captures(&text).unwrap_or_else(|| {
+            panic!(
+                "the zolang starting at line {} has a mistake in the syntax",
+                line
+            )
+        });;
         let expr_str = c.get(1).unwrap().as_str().to_owned();
-        let codeblock_str = c.get(2).unwrap().as_str().to_owned();
+
+        let lines: Vec<&str> = text.split('\n').collect();
+        let mut bracket_open = 0;
+        let mut codeblock = String::new();
+
+        for line in &lines {
+            if line.contains('}') {
+                bracket_open -= 1;
+                if bracket_open == 0 {
+                    break;
+                }
+            } else if line.contains('{') {
+                bracket_open += 1;
+            }
+
+            codeblock.push_str(line)
+        }
 
         LangObject::Zolang(Self {
             expression: BoolExpression::parse(&expr_str, line, ctx),
-            block: CodeBlock::parse(codeblock_str, line, ctx),
+            block: CodeBlock::parse(codeblock, line, ctx),
             line,
         })
     }
@@ -503,27 +526,46 @@ pub struct Als {
 impl Als {
     pub fn parse(text: &str, line: usize, ctx: &mut Context) -> LangObject {
         ctx.add_points(ALS_SOFTWARE);
-        let c = ALS.captures(&text).unwrap_or_else(|| {
+        let mut bracket_open = 0;
+        let mut anders = false;
+
+        let c = ALS_ID.captures(&text).unwrap_or_else(|| {
             panic!(
                 "the als starting at line {} has a mistake in the syntax",
                 line
             )
         });
         let expr_str = c.get(1).unwrap().as_str().to_owned();
-        let if_codeblock_str = c.get(2).unwrap().as_str().to_owned();
 
-        if c.get(3).is_some() && c.get(4).is_none() {
-            panic!(
-                "the als starting at line {} has a mistake in the syntax",
-                line
-            )
+        let lines: Vec<&str> = text.split('\n').collect();
+        let mut if_codeblock_str = String::new();
+        let mut else_block_str = String::new();
+
+        for line in &lines {
+            if line.trim() == "} anders {" && bracket_open == 1 {
+                anders = true;
+            } else {
+                if line.contains('}') {
+                    bracket_open -= 1;
+                    if bracket_open == 0 {
+                        break;
+                    }
+                } else if line.contains('{') {
+                    bracket_open += 1;
+                }
+
+                if anders {
+                    else_block_str.push_str(line)
+                } else {
+                    if_codeblock_str.push_str(line)
+                }
+            }
         }
 
-        let else_block = if c.get(5).is_some() {
-            let else_codeblock_str = c.get(5).unwrap().as_str().to_owned();
-            Some(CodeBlock::parse(else_codeblock_str, line + 1, ctx))
-        } else {
+        let else_block = if else_block_str.is_empty() {
             None
+        } else {
+            Some(CodeBlock::parse(else_block_str, line + 1, ctx))
         };
 
         LangObject::Als(Self {
