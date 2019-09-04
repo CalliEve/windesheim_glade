@@ -251,11 +251,11 @@ impl CodeBlock {
                 LangObject::Als(v) => v.run_if(ctx),
                 LangObject::Print(v) => v.print(ctx),
                 LangObject::TurnLeft => {
-                    ctx.glade.turn_left();
+                    ctx.glade.turn_left(false);
                     ctx.add_points(TURNLEFT_USAGE);
                 },
                 LangObject::TurnRight => {
-                    ctx.glade.turn_right();
+                    ctx.glade.turn_right(false);
                     ctx.add_points(TURNRIGHT_USAGE);
                 },
                 LangObject::StepForwards => {

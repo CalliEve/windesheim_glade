@@ -270,7 +270,7 @@ impl Glade {
                 let mut i = 0;
                 while i < times {
                     i += 1;
-                    self.turn_right()
+                    self.turn_right(true)
                 }
             },
             _ => {},
@@ -320,7 +320,7 @@ impl Glade {
         p.get_color_value()
     }
 
-    pub fn turn_left(&mut self) {
+    pub fn turn_left(&mut self, auto: bool) {
         // println!("turn to the left");
         self.s_inc();
         self.griever.direction = match self.griever.direction {
@@ -328,10 +328,15 @@ impl Glade {
             Direction::East => Direction::North,
             Direction::South => Direction::East,
             Direction::West => Direction::South,
+        };
+        if !auto {
+            let c = self.get_pos(self.griever.x, self.griever.y);
+            self.handle_new_pos(self.griever.x, self.griever.y, &c)
+                .unwrap();
         }
     }
 
-    pub fn turn_right(&mut self) {
+    pub fn turn_right(&mut self, auto: bool) {
         // println!("turn to the right");
         self.s_inc();
         self.griever.direction = match self.griever.direction {
@@ -339,6 +344,11 @@ impl Glade {
             Direction::East => Direction::South,
             Direction::South => Direction::West,
             Direction::West => Direction::North,
+        };
+        if !auto {
+            let c = self.get_pos(self.griever.x, self.griever.y);
+            self.handle_new_pos(self.griever.x, self.griever.y, &c)
+                .unwrap();
         }
     }
 }
