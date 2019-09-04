@@ -1,4 +1,5 @@
 #![feature(exclusive_range_pattern)]
+#![warn(clippy::pedantic)]
 #![allow(dead_code)]
 
 mod map;
@@ -35,7 +36,7 @@ fn main() {
     let instructions = String::from_utf8(i_bytes).unwrap();
     let glade = Glade::parse(&glade_file.unwrap_or_else(|| String::from("./glade.csv")));
 
-    let mut ctx = Context::new(instructions, glade);
+    let mut ctx = Context::new(&instructions, glade);
 
     ctx.parse();
     ctx.execute();

@@ -1,7 +1,7 @@
 use super::weights::*;
 use csv::ReaderBuilder;
 use rand::seq::IteratorRandom;
-use std::{collections::HashMap, iter::FromIterator};
+use std::{collections::HashMap, convert::TryInto, iter::FromIterator};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Content {
@@ -61,21 +61,17 @@ impl Content {
 
     pub fn get_color_value(&self) -> i32 {
         match self {
-            Self::BlackSquare => BLACK_SQUARE,
-            Self::BlueSquare => BLUE_SQUARE,
+            Self::BlackSquare | Self::Bomb(_, _) | Self::Griever(_) | Self::Obstacle => {
+                BLACK_SQUARE
+            },
+            Self::YellowSquare | Self::Money(_) | Self::Target(_) => YELLOW_SQUARE,
+            Self::BlueSquare | Self::Turner(_) => BLUE_SQUARE,
             Self::GraySquare => GRAY_SQUARE,
             Self::GreenSquare => GREEN_SQUARE,
             Self::OrangeSquare => ORANGE_SQUARE,
             Self::PurpleSquare => PURPLE_SQUARE,
             Self::RedSquare => RED_SQUARE,
             Self::WhiteSquare => WHITE_SQUARE,
-            Self::YellowSquare => YELLOW_SQUARE,
-            Self::Bomb(_, _) => BLACK_SQUARE,
-            Self::Griever(_) => BLACK_SQUARE,
-            Self::Money(_) => YELLOW_SQUARE,
-            Self::Obstacle => BLACK_SQUARE,
-            Self::Turner(_) => BLUE_SQUARE,
-            Self::Target(_) => YELLOW_SQUARE,
         }
     }
 }
@@ -110,7 +106,7 @@ pub struct Glade {
 }
 
 impl Glade {
-    pub fn parse(path: &str) -> Glade {
+    pub fn parse(path: &str) -> Self {
         let mut targets: Vec<i32> = Vec::new();
         let mut bonusses: Vec<i32> = Vec::new();
         let mut griever = false;
@@ -120,7 +116,7 @@ impl Glade {
             .delimiter(b';')
             .from_path(path)
             .expect("unable to read csv file");
-        let mut glade = Glade {
+        let mut glade = Self {
             map: HashMap::new(),
             griever: Griever {
                 x: 1,
@@ -180,7 +176,10 @@ impl Glade {
 
         targets.sort();
         for (i, t) in targets.iter().enumerate() {
-            if i != *t as usize {
+            let target_num: usize = (*t)
+                .try_into()
+                .unwrap_or_else(|_| panic!("target number is not positive"));
+            if i != target_num {
                 panic!("missing one or more targets (note that targets have to be a continuos sequence starting at 1 and to a max of 9)")
             }
         }
@@ -231,25 +230,30 @@ impl Glade {
         self.map.get_mut(&y).unwrap().insert(x, content);
     }
 
-    fn handle_new_pos(&mut self, x: usize, y: usize, c: Content) -> Result<i32, ()> {
+    fn handle_new_pos(&mut self, x: usize, y: usize, c: &Content) -> Result<i32, ()> {
         match c {
             Content::Money(a) => {
                 self.set_pos(x, y, Content::Money(0));
-                return Ok(2_i32.pow(a as u32));
+                let amount: u32 = (*a).try_into().unwrap_or_else(|_| {
+                    panic!("the bonus amount is not a positive number at {}, {}", x, y)
+                });
+                return Ok(2_i32.pow(amount));
             },
             Content::Bomb(seconds, last) => {
-                if seconds == 0 || last + seconds == self.seconds {
+                if *seconds == 0 || last + seconds == self.seconds {
                     panic!("\n------------\n\nBOOM!\nYou're dead\n\n------------\n")
-                } else if last == 0 {
-                    self.set_pos(x, y, Content::Bomb(seconds, self.seconds));
+                } else if *last == 0 {
+                    self.set_pos(x, y, Content::Bomb(*seconds, self.seconds));
                 }
             },
-            Content::Target(times) => self.target_inc(times),
+            Content::Target(times) => self.target_inc(*times),
             Content::Obstacle => return Err(()),
             Content::Turner(mut times) => {
                 if times == 0 {
                     let mut rng = rand::thread_rng();
-                    times = (0..4).choose(&mut rng).unwrap();
+                    times = (0..4)
+                        .choose(&mut rng)
+                        .expect("the rand choose for the turner failed");
                 }
                 let mut i = 0;
                 while i < times {
@@ -267,7 +271,7 @@ impl Glade {
         let f = self.get_forward();
         let p = self.get_pos(f.0, f.1);
 
-        let res = self.handle_new_pos(f.0, f.1, p);
+        let res = self.handle_new_pos(f.0, f.1, &p);
         if res.is_ok() {
             self.griever.x = f.0;
             self.griever.y = f.1;
@@ -283,7 +287,7 @@ impl Glade {
         self.griever.y = b.1;
         let p = self.get_pos(b.0, b.1);
 
-        let res = self.handle_new_pos(b.0, b.1, p);
+        let res = self.handle_new_pos(b.0, b.1, &p);
         if res.is_ok() {
             self.griever.x = b.0;
             self.griever.y = b.1;
