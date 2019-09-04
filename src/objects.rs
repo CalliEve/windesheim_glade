@@ -1,5 +1,4 @@
 use super::{map::*, regex::*, weights::*};
-use regex::Regex;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -25,19 +24,22 @@ pub enum ExpressionVar {
 }
 
 impl ExpressionVar {
-    pub fn parse(text: String, line: usize, ctx: &Context) -> ExpressionVar {
+    pub fn parse(text: &str, line: usize, ctx: &Context) -> Self {
         if let Ok(i) = i32::from_str_radix(text.trim(), 10) {
-            ExpressionVar::Int(i)
+            Self::Int(i)
         } else if text.trim().chars().count() == 1 {
-            ExpressionVar::Variable(text.trim().to_owned())
+            if ctx.variables.get(text.trim()).is_none() {
+                panic!("variable {} is not defined at line {}", text.trim(), line)
+            }
+            Self::Variable(text.trim().to_owned())
         } else if text.trim() == "kompas" && ctx.useable.contains(&Hardware::Kompas) {
-            ExpressionVar::Kompas
+            Self::Kompas
         } else if text.trim() == "zwOog" && ctx.useable.contains(&Hardware::ZwOog) {
-            ExpressionVar::ZwOog
+            Self::ZwOog
         } else if text.trim() == "kleurOog" && ctx.useable.contains(&Hardware::KleurOog) {
-            ExpressionVar::KleurOog
+            Self::KleurOog
         } else if INT_EXPRESSION.is_match(&text) {
-            ExpressionVar::Expression(Box::new(IntExpression::parse(text, line, ctx)))
+            Self::Expression(Box::new(IntExpression::parse(&text, line, ctx)))
         } else {
             panic!("invalid expression on line {}", line)
         }
@@ -79,11 +81,11 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(file_text: String, glade: Glade) -> Context {
-        Context {
-            file_text: file_text.clone(),
+    pub fn new(file_text: &str, glade: Glade) -> Self {
+        Self {
+            file_text: file_text.to_owned(),
             code: CodeBlock {
-                text: file_text.clone(),
+                text: file_text.to_owned(),
                 line: 0,
                 objects: Vec::new(),
             },
@@ -101,9 +103,9 @@ impl Context {
 
     fn parse_variables(&mut self) {
         let text = self.file_text.clone();
-        let lines: Vec<&str> = Regex::new("\n").unwrap().split(&text).collect();
+        let lines: Vec<&str> = text.split('\n').collect();
 
-        for line in lines.iter() {
+        for line in &lines {
             if INSTANTIATOR.is_match(line) {
                 let c = INSTANTIATOR.captures(line).unwrap();
                 let name = c.get(1).unwrap().as_str().to_owned();
@@ -165,7 +167,7 @@ pub struct CodeBlock {
 
 impl CodeBlock {
     pub fn parse(text: String, line_nr: usize, ctx: &mut Context) -> Self {
-        let lines: Vec<&str> = Regex::new("\n").unwrap().split(&text).collect();
+        let lines: Vec<&str> = text.split('\n').collect();
         let mut objects: Vec<LangObject> = Vec::new();
         let mut in_block = false;
 
@@ -175,6 +177,16 @@ impl CodeBlock {
                     in_block = false
                 }
                 continue;
+            } else if FORBIDDEN_END_BLOCK.is_match(&line) {
+                panic!(
+                    "a closing }} has to be on a newline! it isn't at line {}",
+                    line_nr + i + 1
+                )
+            } else if HANGING_EXPRESSION.is_match(&line) {
+                panic!(
+                    "an operator or comparer needs something to operate with or compare to! it doesn't at line {}",
+                    line_nr + i + 1
+                )
             } else if line.trim() == "draaiLinks" {
                 ctx.add_points(ACTION_SOFTWARE);
                 objects.push(LangObject::TurnLeft)
@@ -188,9 +200,9 @@ impl CodeBlock {
                 ctx.add_points(ACTION_SOFTWARE);
                 objects.push(LangObject::StepBackwards)
             } else if ASSIGNMENT.is_match(line) {
-                objects.push(Assignment::parse(String::from(*line), line_nr + i + 1, ctx))
+                objects.push(Assignment::parse(*line, line_nr + i + 1, ctx))
             } else if PRINT.is_match(line) {
-                objects.push(Print::parse(String::from(*line), line_nr + i + 1, ctx))
+                objects.push(Print::parse(*line, line_nr + i + 1, ctx))
             } else if String::from(*line).trim().is_empty() {
                 continue;
             } else if ZOLANG_ID.is_match(line) {
@@ -201,7 +213,7 @@ impl CodeBlock {
                         full.push_str("\n");
                     }
                 });
-                objects.push(Zolang::parse(full, line_nr + i + 1, ctx));
+                objects.push(Zolang::parse(&full, line_nr + i + 1, ctx));
                 in_block = true;
             } else if ALS_ID.is_match(line) {
                 let mut full: String = String::new();
@@ -211,7 +223,7 @@ impl CodeBlock {
                         full.push_str("\n");
                     }
                 });
-                objects.push(Als::parse(full, line_nr + i + 1, ctx));
+                objects.push(Als::parse(&full, line_nr + i + 1, ctx));
                 in_block = true;
             } else if INSTANTIATOR.is_match(line) {
                 continue;
@@ -276,10 +288,12 @@ pub struct BoolExpression {
 }
 
 impl BoolExpression {
-    pub fn parse(text: String, line: usize, ctx: &Context) -> BoolExpression {
-        let c = BOOL_EXPRESSION.captures(&text).unwrap();
-        let left_str = c.get(1).unwrap().as_str().to_owned();
-        let right_str = c.get(3).unwrap().as_str().to_owned();
+    pub fn parse(text: &str, line: usize, ctx: &Context) -> Self {
+        let c = BOOL_EXPRESSION
+            .captures(&text)
+            .unwrap_or_else(|| panic!("there is an error in the bool expression at line {}", line));
+        let left_str = c.get(1).unwrap().as_str();
+        let right_str = c.get(3).unwrap().as_str();
 
         let comparer = match c.get(2).unwrap().as_str() {
             "==" => Comparer::Equal,
@@ -289,7 +303,7 @@ impl BoolExpression {
             _ => panic!("unknown comparer"),
         };
 
-        BoolExpression {
+        Self {
             left: ExpressionVar::parse(left_str, line, ctx),
             right: ExpressionVar::parse(right_str, line, ctx),
             line,
@@ -355,10 +369,10 @@ pub struct IntExpression {
 }
 
 impl IntExpression {
-    pub fn parse(text: String, line: usize, ctx: &Context) -> Self {
+    pub fn parse(text: &str, line: usize, ctx: &Context) -> Self {
         let c = INT_EXPRESSION.captures(&text).unwrap();
-        let left_str = c.get(1).unwrap().as_str().to_owned();
-        let right_str = c.get(3).unwrap().as_str().to_owned();
+        let left_str = c.get(1).unwrap().as_str();
+        let right_str = c.get(3).unwrap().as_str();
 
         let operator = match c.get(2).unwrap().as_str() {
             "+" => Operator::Plus,
@@ -440,15 +454,15 @@ pub struct Zolang {
 }
 
 impl Zolang {
-    pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
+    pub fn parse(text: &str, line: usize, ctx: &mut Context) -> LangObject {
         ctx.add_points(ZOLANG_SOFTWARE);
-        let c = ZOLANG.captures(&text).unwrap();
+        let c = ZOLANG.captures(&text).expect("found a zolang without a closing bracket, do note that these have to be on a new line.");
         let expr_str = c.get(1).unwrap().as_str().to_owned();
         let codeblock_str = c.get(2).unwrap().as_str().to_owned();
 
         LangObject::Zolang(Self {
-            expression: BoolExpression::parse(expr_str, line, ctx),
-            block: CodeBlock::parse(codeblock_str, line + 1, ctx),
+            expression: BoolExpression::parse(&expr_str, line, ctx),
+            block: CodeBlock::parse(codeblock_str, line, ctx),
             line,
         })
     }
@@ -469,21 +483,33 @@ pub struct Als {
 }
 
 impl Als {
-    pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
+    pub fn parse(text: &str, line: usize, ctx: &mut Context) -> LangObject {
         ctx.add_points(ALS_SOFTWARE);
-        let c = ALS.captures(&text).unwrap();
+        let c = ALS.captures(&text).unwrap_or_else(|| {
+            panic!(
+                "the als starting at line {} has a mistake in the syntax",
+                line
+            )
+        });
         let expr_str = c.get(1).unwrap().as_str().to_owned();
         let if_codeblock_str = c.get(2).unwrap().as_str().to_owned();
 
-        let else_block = if c.get(4).is_some() {
-            let else_codeblock_str = c.get(4).unwrap().as_str().to_owned();
+        if c.get(3).is_some() && c.get(4).is_none() {
+            panic!(
+                "the als starting at line {} has a mistake in the syntax",
+                line
+            )
+        }
+
+        let else_block = if c.get(5).is_some() {
+            let else_codeblock_str = c.get(5).unwrap().as_str().to_owned();
             Some(CodeBlock::parse(else_codeblock_str, line + 1, ctx))
         } else {
             None
         };
 
         LangObject::Als(Self {
-            expression: BoolExpression::parse(expr_str, line, ctx),
+            expression: BoolExpression::parse(&expr_str, line, ctx),
             if_block: CodeBlock::parse(if_codeblock_str, line + 1, ctx),
             else_block,
             line,
@@ -507,16 +533,21 @@ pub struct Assignment {
 }
 
 impl Assignment {
-    pub fn parse(text: String, line: usize, ctx: &mut Context) -> LangObject {
+    pub fn parse(text: &str, line: usize, ctx: &mut Context) -> LangObject {
         ctx.add_points(ASSIGNMENT_SOFTWARE);
-        let c = ASSIGNMENT.captures(&text).unwrap();
-        let name = c.get(1).unwrap().as_str();
-        let to_assign = c.get(2).unwrap().as_str().to_owned();
+        let c = ASSIGNMENT.captures(&text).unwrap_or_else(|| {
+            panic!(
+                "there is an error in the syntax of the assignment at line {}",
+                line
+            )
+        });
+        let name = c.get(1).unwrap().as_str().to_owned();
+        let to_assign = c.get(2).unwrap().as_str();
 
         let expression = ExpressionVar::parse(to_assign, line, ctx);
 
         LangObject::Assignment(Self {
-            var: name.to_owned(),
+            var: name,
             line,
             expression,
         })
@@ -557,9 +588,9 @@ pub struct Print {
 }
 
 impl Print {
-    pub fn parse(text: String, line: usize, ctx: &Context) -> LangObject {
+    pub fn parse(text: &str, line: usize, ctx: &Context) -> LangObject {
         let c = PRINT.captures(&text).unwrap();
-        let to_print = c.get(1).unwrap().as_str().to_owned();
+        let to_print = c.get(1).unwrap().as_str();
 
         let expression = ExpressionVar::parse(to_print, line, ctx);
 
