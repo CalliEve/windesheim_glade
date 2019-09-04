@@ -220,6 +220,7 @@ impl CodeBlock {
                     }
                 });
                 open_brackets += 1;
+                println!("parsing zolang");
                 objects.push(Zolang::parse(&full, line_nr + i + 1, ctx));
             } else if ALS_ID.is_match(line) {
                 let mut full: String = String::new();
@@ -230,6 +231,7 @@ impl CodeBlock {
                     }
                 });
                 open_brackets += 1;
+                println!("parsing als");
                 objects.push(Als::parse(&full, line_nr + i + 1, ctx));
             } else if INSTANTIATOR.is_match(line) {
                 continue;
@@ -486,24 +488,30 @@ impl Zolang {
 
         let lines: Vec<&str> = text.split('\n').collect();
         let mut bracket_open = 0;
-        let mut codeblock = String::new();
+        let mut codeblock: Vec<&str> = Vec::new();
 
-        for line in &lines {
+        for (i, line) in lines.iter().enumerate() {
+            if i == 0 {
+                bracket_open += 1;
+                continue;
+            }
+
             if line.contains('}') {
                 bracket_open -= 1;
                 if bracket_open == 0 {
                     break;
                 }
-            } else if line.contains('{') {
+            }
+            if line.contains('{') {
                 bracket_open += 1;
             }
 
-            codeblock.push_str(line)
+            codeblock.push(line)
         }
 
         LangObject::Zolang(Self {
             expression: BoolExpression::parse(&expr_str, line, ctx),
-            block: CodeBlock::parse(codeblock, line, ctx),
+            block: CodeBlock::parse(codeblock.join("\n"), line, ctx),
             line,
         })
     }
@@ -538,10 +546,14 @@ impl Als {
         let expr_str = c.get(1).unwrap().as_str().to_owned();
 
         let lines: Vec<&str> = text.split('\n').collect();
-        let mut if_codeblock_str = String::new();
-        let mut else_block_str = String::new();
+        let mut if_codeblock_str: Vec<&str> = Vec::new();
+        let mut else_block_str: Vec<&str> = Vec::new();
 
-        for line in &lines {
+        for (i, line) in lines.iter().enumerate() {
+            if i == 0 {
+                bracket_open += 1;
+                continue;
+            }
             if line.trim() == "} anders {" && bracket_open == 1 {
                 anders = true;
             } else {
@@ -550,14 +562,15 @@ impl Als {
                     if bracket_open == 0 {
                         break;
                     }
-                } else if line.contains('{') {
+                }
+                if line.contains('{') {
                     bracket_open += 1;
                 }
 
                 if anders {
-                    else_block_str.push_str(line)
+                    else_block_str.push(line)
                 } else {
-                    if_codeblock_str.push_str(line)
+                    if_codeblock_str.push(line)
                 }
             }
         }
@@ -565,12 +578,12 @@ impl Als {
         let else_block = if else_block_str.is_empty() {
             None
         } else {
-            Some(CodeBlock::parse(else_block_str, line + 1, ctx))
+            Some(CodeBlock::parse(else_block_str.join("\n"), line + 1, ctx))
         };
 
         LangObject::Als(Self {
             expression: BoolExpression::parse(&expr_str, line, ctx),
-            if_block: CodeBlock::parse(if_codeblock_str, line + 1, ctx),
+            if_block: CodeBlock::parse(if_codeblock_str.join("\n"), line + 1, ctx),
             else_block,
             line,
         })
