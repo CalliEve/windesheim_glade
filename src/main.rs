@@ -1,4 +1,3 @@
-#![feature(exclusive_range_pattern)]
 #![warn(clippy::pedantic)]
 #![allow(dead_code)]
 
