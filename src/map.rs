@@ -309,7 +309,7 @@ impl Glade {
     pub fn bw_eye(&mut self) -> i32 {
         let p = self.get_pos(self.griever.x, self.griever.y);
         match p.get_color_value() {
-            1..9 => 1,
+            1..=9 => 1,
             0 => 0,
             _ => panic!("negative aren't possible"),
         }

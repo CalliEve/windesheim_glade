@@ -483,7 +483,7 @@ impl Zolang {
                 "the zolang starting at line {} has a mistake in the syntax",
                 line
             )
-        });;
+        });
         let expr_str = c.get(1).unwrap().as_str().to_owned();
 
         let lines: Vec<&str> = text.split('\n').collect();
